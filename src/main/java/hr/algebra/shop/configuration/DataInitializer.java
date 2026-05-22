@@ -9,6 +9,7 @@ import hr.algebra.shop.repository.ProductRepository;
 import hr.algebra.shop.repository.RoleRepository;
 import hr.algebra.shop.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -27,6 +28,9 @@ public class DataInitializer implements ApplicationRunner {
     private final ProductRepository productRepository;
     private final PasswordEncoder passwordEncoder;
 
+    @Value("${app.default-password}")
+    private String defaultPassword;
+
     @Override
     public void run(ApplicationArguments args) {
         seedRolesAndUsers();
@@ -43,7 +47,7 @@ public class DataInitializer implements ApplicationRunner {
             userRepository.save(User.builder()
                     .username("admin")
                     .email("admin@shop.com")
-                    .password(passwordEncoder.encode("password"))
+                    .password(passwordEncoder.encode(defaultPassword))
                     .roles(Set.of(adminRole))
                     .build());
         }
@@ -52,7 +56,7 @@ public class DataInitializer implements ApplicationRunner {
             userRepository.save(User.builder()
                     .username("customer")
                     .email("customer@shop.com")
-                    .password(passwordEncoder.encode("password"))
+                    .password(passwordEncoder.encode(defaultPassword))
                     .roles(Set.of(customerRole))
                     .build());
         }

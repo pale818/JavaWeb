@@ -38,51 +38,63 @@ public class SecurityConfiguration {
     }
 
     @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
-        return config.getAuthenticationManager();
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) {
+        try {
+            return config.getAuthenticationManager();
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to build AuthenticationManager", e);
+        }
     }
 
     // ── REST / JWT chain (stateless) ─────────────────────────────────────────────
     @Bean
     @Order(1)
-    public SecurityFilterChain jwtFilterChain(HttpSecurity http) throws Exception {
-        http
-            .securityMatcher("/api/**")
-            .csrf(csrf -> csrf.disable())
-            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers("/api/products/**").permitAll()
-                .anyRequest().authenticated()
-            )
-            .addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
-        return http.build();
+    public SecurityFilterChain jwtFilterChain(HttpSecurity http) {
+        try {
+            http
+                .securityMatcher("/api/**")
+                .csrf(csrf -> csrf.disable())
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth
+                    .requestMatchers("/api/auth/**").permitAll()
+                    .requestMatchers("/api/products/**").permitAll()
+                    .anyRequest().authenticated()
+                )
+                .addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
+            return http.build();
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to configure JWT filter chain", e);
+        }
     }
 
     // ── MVC / Form login chain ───────────────────────────────────────────────────
     @Bean
     @Order(2)
-    public SecurityFilterChain mvcFilterChain(HttpSecurity http) throws Exception {
-        http
-            .authenticationProvider(authenticationProvider())
-            .csrf(csrf -> csrf.ignoringRequestMatchers("/h2-console/**"))
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/", "/categories/**", "/products/**", "/cart/**",
-                        "/h2-console/**", "/login").permitAll()
-                .requestMatchers("/checkout/**", "/orders/**").hasRole("CUSTOMER")
-                .requestMatchers("/admin/**").hasRole("ADMIN")
-                .anyRequest().authenticated()
-            )
-            .formLogin(form -> form
-                .loginPage("/login")
-                .defaultSuccessUrl("/", true)
-                .permitAll()
-            )
-            .logout(logout -> logout
-                .logoutSuccessUrl("/login?logout")
-                .permitAll()
-            )
-            .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()));
-        return http.build();
+    public SecurityFilterChain mvcFilterChain(HttpSecurity http) {
+        try {
+            http
+                .authenticationProvider(authenticationProvider())
+                .csrf(csrf -> csrf.ignoringRequestMatchers("/h2-console/**"))
+                .authorizeHttpRequests(auth -> auth
+                    .requestMatchers("/", "/categories/**", "/products/**", "/cart/**",
+                            "/h2-console/**", "/login").permitAll()
+                    .requestMatchers("/checkout/**", "/orders/**").hasRole("CUSTOMER")
+                    .requestMatchers("/admin/**").hasRole("ADMIN")
+                    .anyRequest().authenticated()
+                )
+                .formLogin(form -> form
+                    .loginPage("/login")
+                    .defaultSuccessUrl("/", true)
+                    .permitAll()
+                )
+                .logout(logout -> logout
+                    .logoutSuccessUrl("/login?logout")
+                    .permitAll()
+                )
+                .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()));
+            return http.build();
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to configure MVC filter chain", e);
+        }
     }
 }

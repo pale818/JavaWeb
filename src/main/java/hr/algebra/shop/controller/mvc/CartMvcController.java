@@ -18,6 +18,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class CartMvcController {
 
+    private static final String REDIRECT_CART = "redirect:/cart";
+
     private final CartService cartService;
     private final ProductService productService;
 
@@ -43,25 +45,25 @@ public class CartMvcController {
     @PostMapping("/add")
     public String addToCart(@RequestParam Long productId, @RequestParam Integer quantity) {
         cartService.addItem(productId, quantity);
-        return "redirect:/cart";
+        return REDIRECT_CART;
     }
 
     @PostMapping("/update")
     public String updateQuantity(@RequestParam Long productId, @RequestParam Integer quantity) {
         cartService.updateQuantity(productId, quantity);
-        return "redirect:/cart";
+        return REDIRECT_CART;
     }
 
     @PostMapping("/remove")
     public String removeFromCart(@RequestParam Long productId) {
         cartService.removeItem(productId);
-        return "redirect:/cart";
+        return REDIRECT_CART;
     }
 
     @PostMapping("/clear")
     public String clearCart() {
         cartService.clear();
-        return "redirect:/cart";
+        return REDIRECT_CART;
     }
 
     // Inner DTO for view display

@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 @RequiredArgsConstructor
 public class PublicMvcController {
 
+    private static final String CART_COUNT = "cartCount";
+
     private final CategoryService categoryService;
     private final ProductService productService;
     private final CartService cartService;
@@ -21,14 +23,14 @@ public class PublicMvcController {
     public String home(Model model) {
         model.addAttribute("categories", categoryService.getAllCategories());
         model.addAttribute("featuredProducts", productService.getAllProducts());
-        model.addAttribute("cartCount", cartService.getTotalItemsCount());
+        model.addAttribute(CART_COUNT, cartService.getTotalItemsCount());
         return "home";
     }
 
     @GetMapping("/categories")
     public String categories(Model model) {
         model.addAttribute("categories", categoryService.getAllCategories());
-        model.addAttribute("cartCount", cartService.getTotalItemsCount());
+        model.addAttribute(CART_COUNT, cartService.getTotalItemsCount());
         return "categories";
     }
 
@@ -36,14 +38,14 @@ public class PublicMvcController {
     public String productsByCategory(@PathVariable Long id, Model model) {
         model.addAttribute("category", categoryService.getCategoryById(id));
         model.addAttribute("products", productService.getProductsByCategory(id));
-        model.addAttribute("cartCount", cartService.getTotalItemsCount());
+        model.addAttribute(CART_COUNT, cartService.getTotalItemsCount());
         return "products";
     }
 
     @GetMapping("/products/{id}")
     public String productDetail(@PathVariable Long id, Model model) {
         model.addAttribute("product", productService.getProductById(id));
-        model.addAttribute("cartCount", cartService.getTotalItemsCount());
+        model.addAttribute(CART_COUNT, cartService.getTotalItemsCount());
         return "product-detail";
     }
 

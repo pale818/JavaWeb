@@ -1,5 +1,7 @@
 package hr.algebra.shop.controller.mvc;
 
+import hr.algebra.shop.dto.CategoryForm;
+import hr.algebra.shop.dto.ProductForm;
 import hr.algebra.shop.model.Category;
 import hr.algebra.shop.model.Product;
 import hr.algebra.shop.repository.LoginHistoryRepository;
@@ -19,6 +21,11 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 @RequiredArgsConstructor
 public class AdminMvcController {
 
+    private static final String CATEGORIES_ATTR = "categories";
+    private static final String CATEGORIES_FORM_VIEW = "admin/categories/form";
+    private static final String PRODUCTS_FORM_VIEW = "admin/products/form";
+    private static final String SUCCESS_ATTR = "success";
+
     private final CategoryService categoryService;
     private final ProductService productService;
     private final OrderService orderService;
@@ -28,35 +35,45 @@ public class AdminMvcController {
 
     @GetMapping("/categories")
     public String listCategories(Model model) {
-        model.addAttribute("categories", categoryService.getAllCategories());
+        model.addAttribute(CATEGORIES_ATTR, categoryService.getAllCategories());
         return "admin/categories/list";
     }
 
     @GetMapping("/categories/new")
     public String newCategoryForm(Model model) {
-        model.addAttribute("category", new Category());
-        return "admin/categories/form";
+        model.addAttribute("category", new CategoryForm());
+        return CATEGORIES_FORM_VIEW;
     }
 
     @GetMapping("/categories/{id}/edit")
     public String editCategoryForm(@PathVariable Long id, Model model) {
-        model.addAttribute("category", categoryService.getCategoryById(id));
-        return "admin/categories/form";
+        Category cat = categoryService.getCategoryById(id);
+        CategoryForm form = new CategoryForm();
+        form.setId(cat.getId());
+        form.setName(cat.getName());
+        form.setDescription(cat.getDescription());
+        model.addAttribute("category", form);
+        return CATEGORIES_FORM_VIEW;
     }
 
     @PostMapping("/categories/save")
-    public String saveCategory(@Valid @ModelAttribute Category category, BindingResult result,
-                               RedirectAttributes attrs) {
-        if (result.hasErrors()) return "admin/categories/form";
+    public String saveCategory(@Valid @ModelAttribute("category") CategoryForm form,
+                               BindingResult result, RedirectAttributes attrs) {
+        if (result.hasErrors()) return CATEGORIES_FORM_VIEW;
+        Category category = Category.builder()
+                .id(form.getId())
+                .name(form.getName())
+                .description(form.getDescription())
+                .build();
         categoryService.save(category);
-        attrs.addFlashAttribute("success", "Category saved successfully.");
+        attrs.addFlashAttribute(SUCCESS_ATTR, "Category saved successfully.");
         return "redirect:/admin/categories";
     }
 
     @PostMapping("/categories/{id}/delete")
     public String deleteCategory(@PathVariable Long id, RedirectAttributes attrs) {
         categoryService.deleteById(id);
-        attrs.addFlashAttribute("success", "Category deleted.");
+        attrs.addFlashAttribute(SUCCESS_ATTR, "Category deleted.");
         return "redirect:/admin/categories";
     }
 
@@ -70,34 +87,51 @@ public class AdminMvcController {
 
     @GetMapping("/products/new")
     public String newProductForm(Model model) {
-        model.addAttribute("product", new Product());
-        model.addAttribute("categories", categoryService.getAllCategories());
-        return "admin/products/form";
+        model.addAttribute("product", new ProductForm());
+        model.addAttribute(CATEGORIES_ATTR, categoryService.getAllCategories());
+        return PRODUCTS_FORM_VIEW;
     }
 
     @GetMapping("/products/{id}/edit")
     public String editProductForm(@PathVariable Long id, Model model) {
-        model.addAttribute("product", productService.getProductById(id));
-        model.addAttribute("categories", categoryService.getAllCategories());
-        return "admin/products/form";
+        Product p = productService.getProductById(id);
+        ProductForm form = new ProductForm();
+        form.setId(p.getId());
+        form.setName(p.getName());
+        form.setDescription(p.getDescription());
+        form.setPrice(p.getPrice());
+        form.setStockQuantity(p.getStockQuantity());
+        form.setCategoryId(p.getCategory().getId());
+        model.addAttribute("product", form);
+        model.addAttribute(CATEGORIES_ATTR, categoryService.getAllCategories());
+        return PRODUCTS_FORM_VIEW;
     }
 
     @PostMapping("/products/save")
-    public String saveProduct(@Valid @ModelAttribute Product product, BindingResult result,
-                              Model model, RedirectAttributes attrs) {
+    public String saveProduct(@Valid @ModelAttribute("product") ProductForm form,
+                              BindingResult result, Model model, RedirectAttributes attrs) {
         if (result.hasErrors()) {
-            model.addAttribute("categories", categoryService.getAllCategories());
-            return "admin/products/form";
+            model.addAttribute(CATEGORIES_ATTR, categoryService.getAllCategories());
+            return PRODUCTS_FORM_VIEW;
         }
+        Category category = categoryService.getCategoryById(form.getCategoryId());
+        Product product = Product.builder()
+                .id(form.getId())
+                .name(form.getName())
+                .description(form.getDescription())
+                .price(form.getPrice())
+                .stockQuantity(form.getStockQuantity())
+                .category(category)
+                .build();
         productService.save(product);
-        attrs.addFlashAttribute("success", "Product saved successfully.");
+        attrs.addFlashAttribute(SUCCESS_ATTR, "Product saved successfully.");
         return "redirect:/admin/products";
     }
 
     @PostMapping("/products/{id}/delete")
     public String deleteProduct(@PathVariable Long id, RedirectAttributes attrs) {
         productService.deleteById(id);
-        attrs.addFlashAttribute("success", "Product deleted.");
+        attrs.addFlashAttribute(SUCCESS_ATTR, "Product deleted.");
         return "redirect:/admin/products";
     }
 

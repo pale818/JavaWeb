@@ -26,6 +26,9 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class CheckoutMvcController {
 
+    private static final String ORDER_ATTR = "order";
+    private static final String ORDER_CONFIRMATION_VIEW = "order-confirmation";
+
     private final CartService cartService;
     private final ProductService productService;
     private final OrderService orderService;
@@ -48,8 +51,8 @@ public class CheckoutMvcController {
             return "redirect:" + approvalUrl;
         }
         Order saved = buildAndSaveOrder(auth.getName(), "CASH");
-        model.addAttribute("order", saved);
-        return "order-confirmation";
+        model.addAttribute(ORDER_ATTR, saved);
+        return ORDER_CONFIRMATION_VIEW;
     }
 
     /** PayPal redirects here after the user approves payment. */
@@ -57,8 +60,8 @@ public class CheckoutMvcController {
     public String paypalReturn(@RequestParam String token, Authentication auth, Model model) {
         payPalService.captureOrder(token);
         Order saved = buildAndSaveOrder(auth.getName(), "PAYPAL");
-        model.addAttribute("order", saved);
-        return "order-confirmation";
+        model.addAttribute(ORDER_ATTR, saved);
+        return ORDER_CONFIRMATION_VIEW;
     }
 
     /** PayPal redirects here if the user cancels. */
@@ -72,8 +75,8 @@ public class CheckoutMvcController {
         Order order = orderService.findOrderById(id)
                 .filter(o -> o.getUser().getUsername().equals(auth.getName()))
                 .orElseThrow(() -> new IllegalArgumentException("Order not found"));
-        model.addAttribute("order", order);
-        return "order-confirmation";
+        model.addAttribute(ORDER_ATTR, order);
+        return ORDER_CONFIRMATION_VIEW;
     }
 
     private Map<Product, Integer> buildCartProducts() {
