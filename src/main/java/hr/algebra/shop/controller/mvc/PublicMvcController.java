@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 public class PublicMvcController {
 
     private static final String CART_COUNT = "cartCount";
+    private static final String CATEGORIES = "categories";
 
     private final CategoryService categoryService;
     private final ProductService productService;
@@ -21,7 +22,7 @@ public class PublicMvcController {
 
     @GetMapping("/")
     public String home(Model model) {
-        model.addAttribute("categories", categoryService.getAllCategories());
+        model.addAttribute(CATEGORIES, categoryService.getAllCategories());
         model.addAttribute("featuredProducts", productService.getAllProducts());
         model.addAttribute(CART_COUNT, cartService.getTotalItemsCount());
         return "home";
@@ -29,9 +30,9 @@ public class PublicMvcController {
 
     @GetMapping("/categories")
     public String categories(Model model) {
-        model.addAttribute("categories", categoryService.getAllCategories());
+        model.addAttribute(CATEGORIES, categoryService.getAllCategories());
         model.addAttribute(CART_COUNT, cartService.getTotalItemsCount());
-        return "categories";
+        return CATEGORIES;
     }
 
     @GetMapping("/categories/{id}/products")
