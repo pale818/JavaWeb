@@ -9,6 +9,5 @@ public interface OrderService {
     Order createOrder(Order order);
     Optional<Order> findOrderById(Long id);
     List<Order> getOrdersByUser(Long userId);
-    List<Order> getAllOrders();
     List<Order> searchOrders(String username, String from, String to);
 }

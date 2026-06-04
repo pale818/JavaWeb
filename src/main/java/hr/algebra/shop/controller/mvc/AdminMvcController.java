@@ -22,8 +22,12 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 public class AdminMvcController {
 
     private static final String CATEGORIES_ATTR = "categories";
+    private static final String CATEGORIES_LIST_VIEW = "admin/categories/list";
     private static final String CATEGORIES_FORM_VIEW = "admin/categories/form";
+    private static final String REDIRECT_CATEGORIES = "redirect:/admin/categories";
+    private static final String PRODUCTS_LIST_VIEW = "admin/products/list";
     private static final String PRODUCTS_FORM_VIEW = "admin/products/form";
+    private static final String REDIRECT_PRODUCTS = "redirect:/admin/products";
     private static final String SUCCESS_ATTR = "success";
 
     private final CategoryService categoryService;
@@ -36,7 +40,7 @@ public class AdminMvcController {
     @GetMapping("/categories")
     public String listCategories(Model model) {
         model.addAttribute(CATEGORIES_ATTR, categoryService.getAllCategories());
-        return "admin/categories/list";
+        return CATEGORIES_LIST_VIEW;
     }
 
     @GetMapping("/categories/new")
@@ -67,14 +71,14 @@ public class AdminMvcController {
                 .build();
         categoryService.save(category);
         attrs.addFlashAttribute(SUCCESS_ATTR, "Category saved successfully.");
-        return "redirect:/admin/categories";
+        return REDIRECT_CATEGORIES;
     }
 
     @PostMapping("/categories/{id}/delete")
     public String deleteCategory(@PathVariable Long id, RedirectAttributes attrs) {
         categoryService.deleteById(id);
         attrs.addFlashAttribute(SUCCESS_ATTR, "Category deleted.");
-        return "redirect:/admin/categories";
+        return REDIRECT_CATEGORIES;
     }
 
     // ── Products ─────────────────────────────────────────────────────────────────
@@ -82,7 +86,7 @@ public class AdminMvcController {
     @GetMapping("/products")
     public String listProducts(Model model) {
         model.addAttribute("products", productService.getAllProducts());
-        return "admin/products/list";
+        return PRODUCTS_LIST_VIEW;
     }
 
     @GetMapping("/products/new")
@@ -125,14 +129,14 @@ public class AdminMvcController {
                 .build();
         productService.save(product);
         attrs.addFlashAttribute(SUCCESS_ATTR, "Product saved successfully.");
-        return "redirect:/admin/products";
+        return REDIRECT_PRODUCTS;
     }
 
     @PostMapping("/products/{id}/delete")
     public String deleteProduct(@PathVariable Long id, RedirectAttributes attrs) {
         productService.deleteById(id);
         attrs.addFlashAttribute(SUCCESS_ATTR, "Product deleted.");
-        return "redirect:/admin/products";
+        return REDIRECT_PRODUCTS;
     }
 
     // ── Login History ─────────────────────────────────────────────────────────────

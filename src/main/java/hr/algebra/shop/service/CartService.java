@@ -12,6 +12,8 @@ import java.util.Map;
 @SessionScope
 @Getter
 public class CartService {
+
+
     private final Map<Long, Integer> items = new HashMap<>();
 
     public void addItem(Long productId, Integer quantity) {

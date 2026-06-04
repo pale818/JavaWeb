@@ -3,6 +3,7 @@ package hr.algebra.shop.controller.mvc;
 import hr.algebra.shop.model.Order;
 import hr.algebra.shop.model.OrderItem;
 import hr.algebra.shop.model.Product;
+import hr.algebra.shop.model.User;
 import hr.algebra.shop.repository.UserRepository;
 import hr.algebra.shop.service.CartService;
 import hr.algebra.shop.service.OrderService;
@@ -94,7 +95,7 @@ public class CheckoutMvcController {
     }
 
     private Order buildAndSaveOrder(String username, String paymentMethod) {
-        hr.algebra.shop.model.User user = userRepository.findByUsername(username).orElseThrow();
+        User user = userRepository.findByUsername(username).orElseThrow();
         List<OrderItem> items = new ArrayList<>();
 
         Order order = Order.builder()
