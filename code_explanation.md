@@ -1,5 +1,46 @@
 # Code Explanation — Online Shop
 
+---
+
+## Postman REST API Routes
+
+Base URL: `https://web-production-8a929.up.railway.app`
+
+### 1 — Login
+**POST** `/api/auth/login`
+```json
+{ "username": "admin", "password": "password" }
+```
+Returns `{ "accessToken": "eyJ...", "refreshToken": "eyJ..." }` — copy both.
+
+### 2 — Get all products
+**GET** `/api/products`
+
+### 3 — Get single product
+**GET** `/api/products/1`
+
+### 4 — Search products
+**GET** `/api/products/search?name=smart&categoryId=1`
+(`categoryId` optional — omit to search all categories)
+
+### 5 — Refresh token
+**POST** `/api/auth/refreshToken`
+```json
+{ "token": "<paste refreshToken here>" }
+```
+Returns new `accessToken` + same `refreshToken`.
+
+### 6 — Logout
+**POST** `/api/auth/logout`
+```json
+{ "token": "<paste refreshToken here>" }
+```
+Nulls the refresh token in DB — using it again returns 401.
+
+> All endpoints are `permitAll()` so no Bearer header is required. To demo JWT validation add `Authorization: Bearer <accessToken>` to any request. To demo token expiry set `jwt.expiration=60000` (1 min), login, wait, then call `/refreshToken`.
+
+---
+
 ## What starts first when you run the app
 
 ```
@@ -137,16 +178,32 @@ Browser
 Chain 2: /login is permitAll() → no authentication required
        │
        ▼
+CsrfFilter
+  └─ GET request → no CSRF check needed
+  └─ no session yet → creates one, generates random token "a3f9b2..."
+  └─ stores token in the new session: session.setAttribute("_csrf", "a3f9b2...")
+       │
+       ▼
 PublicMvcController.login()                    [controller/mvc/PublicMvcController.java]
   └─ returns view name "login"
   └─ Thymeleaf renders login.html
-       └─ <form th:action="@{/login}" method="post">
-  └─ Browser displays username + password fields
+       └─ sees <form> → automatically injects hidden field:
+            <input type="hidden" name="_csrf" value="a3f9b2...">
+       └─ Tomcat sends Set-Cookie: JSESSIONID=ABC123 (the session that holds the token)
+  └─ Browser displays username + password fields (with hidden _csrf inside the form)
 
 User fills in form and clicks submit →
 
 Browser
-  └─ POST /login  (form body: username=admin&password=password)
+  └─ POST /login  (form body: username=admin&password=password&_csrf=a3f9b2...)
+       │           (Cookie: JSESSIONID=ABC123 sent automatically)
+       ▼
+CsrfFilter
+  └─ POST request → must check the token
+  └─ reads _csrf from request body → "a3f9b2..."
+  └─ reads JSESSIONID cookie → looks up session → finds stored token "a3f9b2..."
+  └─ they match ✓ → request continues
+  └─ if no match → 403, nothing further runs
        │
        ▼
 UsernamePasswordAuthenticationFilter  (Spring built-in, added automatically by .formLogin())
@@ -317,6 +374,32 @@ Browser → POST /logout  (CSRF token included in the form)
 
 This handles every request under `/api/**`. It is completely stateless — no session, no cookie.
 
+### Why two tokens? Access token vs refresh token
+
+The REST API uses **two separate tokens** for different purposes:
+
+| | Access token | Refresh token |
+|---|---|---|
+| **What it is** | A signed JWT | Also a signed JWT (longer-lived) |
+| **Stored in DB?** | No — stateless, verified by signature alone | Yes — stored as a column on the `User` entity |
+| **Expiry** | Short (configured in `jwt.expiration`, e.g. 24h) | Long (configured in `jwt.refresh-expiration`, 7 days) |
+| **Sent where** | `Authorization: Bearer ...` header on every API request | Only to `POST /api/auth/refreshToken` |
+| **Purpose** | Proves identity for each API call | Gets a new access token when the old one expires |
+
+The reason for this split: if access tokens lasted 7 days, a stolen token would give an attacker a week of access. Short-lived access tokens limit the damage — they expire quickly. The refresh token is long-lived but is only ever sent to one specific endpoint, so it is much harder to accidentally leak in logs or headers.
+
+Storing the refresh token in the DB (on the `User` row) also makes it **revocable** — on logout the column is set to `null`, instantly invalidating it even if the JWT itself hasn't expired yet.
+
+```
+Client login flow:
+  POST /api/auth/login → gets back { accessToken, refreshToken }
+  Uses accessToken for all API calls
+  accessToken expires after 24h
+  Client sends refreshToken to POST /api/auth/refreshToken
+  Gets back a new { accessToken, refreshToken }
+  Continues using the new accessToken
+```
+
 ### JWT login call flow (Chain 1)
 
 **Trigger:** API client sends username + password as JSON.
@@ -342,14 +425,66 @@ AuthRestController.login()                     [controller/rest/AuthRestControll
        └─ this is the CONTROLLER calling AuthenticationManager directly in Java code
        └─ same DaoAuthenticationProvider and MyUserDetailsService as Chain 2
        └─ BCrypt hash check → success or BadCredentialsException → 401
-  └─ jwtUtil.generateToken(auth.getName())     [configuration/JwtUtil.java]
-       └─ builds JWT: subject="admin", issued-at=now, expiry=now+24h
+  └─ UserRepository.findByUsername("admin") → User entity
+  └─ jwtUtil.generateToken("admin")            [configuration/JwtUtil.java]
+       └─ builds JWT: subject="admin", issued-at=now, expiry=now+jwt.expiration
        └─ signs it with HMAC-SHA256 using the secret key from application.properties
-       └─ returns token string "eyJ..."
-  └─ returns HTTP 200 {"token": "eyJhbGci..."}
+       └─ returns access token string "eyJ..."
+  └─ jwtUtil.generateRefreshToken("admin")
+       └─ same as generateToken but uses jwt.refresh-expiration (7 days)
+       └─ returns refresh token string "eyJrefresh..."
+  └─ user.setRefreshToken("eyJrefresh...")
+  └─ UserRepository.save(user)
+       └─ UPDATE users SET refresh_token = 'eyJrefresh...' WHERE id = 1
+  └─ returns HTTP 200 {"accessToken": "eyJhbGci...", "refreshToken": "eyJrefresh..."}
 ```
 
-The client stores this token and sends it in every future request header.
+The client stores both tokens. It uses the access token for all API calls and only touches the refresh token when the access token expires.
+
+### Refresh token call flow
+
+**Trigger:** API client's access token has expired (server returns 401). Client sends the stored refresh token to get a new access token without requiring the user to log in again.
+
+```
+POST /api/auth/refreshToken
+Content-Type: application/json
+{"token": "eyJrefresh..."}
+  │
+  ▼
+Chain 1: /api/auth/** is permitAll() → no access token needed here
+  │
+  ▼
+AuthRestController.refreshToken()
+  └─ UserRepository.findByRefreshToken("eyJrefresh...")
+       └─ SELECT * FROM users WHERE refresh_token = 'eyJrefresh...'
+       └─ if not found → user logged out (token was nulled) → 401
+  └─ .filter(u -> jwtUtil.isTokenValid("eyJrefresh..."))
+       └─ verifies JWT signature and checks expiry date
+       └─ if expired or tampered → 401
+  └─ jwtUtil.generateToken(u.getUsername()) → new "eyJnew..." access token
+  └─ returns HTTP 200 {"accessToken": "eyJnew...", "refreshToken": "eyJrefresh..."}
+       └─ same refresh token is returned (reused until it expires)
+       └─ new access token is fresh with a new expiry
+```
+
+If the refresh token is expired or null (after logout), the client must call `POST /api/auth/login` again with full credentials.
+
+### Logout call flow
+
+```
+POST /api/auth/logout
+Content-Type: application/json
+{"token": "eyJrefresh..."}
+  │
+  ▼
+AuthRestController.logout()
+  └─ UserRepository.findByRefreshToken("eyJrefresh...")
+  └─ user.setRefreshToken(null)
+  └─ UserRepository.save(user)
+       └─ UPDATE users SET refresh_token = NULL WHERE id = 1
+```
+
+Even though the refresh JWT itself is still cryptographically valid until its expiry date, it is now gone from the DB — so `findByRefreshToken()` will return empty and any attempt to use it returns 401.
 
 ---
 
@@ -398,11 +533,15 @@ ProductRestController.getAll()                 [controller/rest/ProductRestContr
 **Important:** The SecurityContext is populated fresh on every single request from the token alone. No session exists — the token carries everything.
 
 **Files involved:**
-- `JwtRequestFilter.java` — reads and validates the token, populates SecurityContext
-- `JwtUtil.java` — generates tokens and validates them (signature + expiry)
-- `AuthRestController.java` — the login endpoint that issues tokens
+- `JwtRequestFilter.java` — reads and validates the access token, populates SecurityContext
+- `JwtUtil.java` — generates access tokens and refresh tokens, validates them (signature + expiry)
+- `AuthRestController.java` — login, refreshToken, and logout endpoints
+- `User.java` — has a `refreshToken` column where the JWT refresh token is stored
+- `UserRepository.java` — `findByRefreshToken()` used to look up user by their stored token
 - `MyUserDetailsService.java` — reused from Chain 2, loads user from DB
 - `LoginRequest.java` — DTO for `{username, password}` request body
+- `JwtResponseDTO.java` — DTO for `{accessToken, refreshToken}` response
+- `RefreshTokenRequestDTO.java` — DTO for `{token}` refresh/logout request body
 
 ---
 
@@ -504,7 +643,7 @@ If `SecurityContextHolder` is empty at step ③ (no valid session, no valid toke
 
 Thymeleaf is a server-side template engine. Your controller builds a `Model` object (a map of data), then tells Spring which HTML template to render. Thymeleaf merges the template with the data and sends the final HTML to the browser. The browser receives plain HTML — no JavaScript framework involved.
 
-Every flow in this chapter goes through Chain 2. The `SecurityContextPersistenceFilter` restores the session on each request, so the user is already authenticated when the controller runs. It is not repeated in each flow.
+Every flow in this chapter goes through Chain 2. Each flow shows the security step in one compact line immediately after the browser request.
 
 ---
 
@@ -514,7 +653,7 @@ Every flow in this chapter goes through Chain 2. The `SecurityContextPersistence
 Browser → GET /categories
   │
   ▼
-Chain 2: /categories is permitAll() → no login required
+Chain 2: session restored → CSRF skipped (GET) → /categories is permitAll() ✓
   │
   ▼
 PublicMvcController.categories()               [controller/mvc/PublicMvcController.java]
@@ -536,6 +675,9 @@ Clicking a category:
 
 ```
 Browser → GET /categories/1/products
+  │
+  ▼
+Chain 2: session restored → CSRF skipped (GET) → /categories/** is permitAll() ✓
   │
   ▼
 PublicMvcController.productsByCategory(id=1)
@@ -564,7 +706,7 @@ The cart is a `Map<Long, Integer>` (productId → quantity) stored in that sessi
 Browser → POST /cart/add?productId=1&quantity=2
   │
   ▼
-Chain 2: /cart/** is permitAll() → anonymous users can add to cart
+Chain 2: session restored → CSRF checked ✓ → /cart/** is permitAll() ✓
   │
   ▼
 CartMvcController.addToCart(productId=1, quantity=2)   [controller/mvc/CartMvcController.java]
@@ -575,6 +717,9 @@ CartMvcController.addToCart(productId=1, quantity=2)   [controller/mvc/CartMvcCo
   └─ redirect to /cart
 
 Browser → GET /cart
+  │
+  ▼
+Chain 2: session restored → CSRF skipped (GET) → /cart/** is permitAll() ✓
   │
   ▼
 CartMvcController.viewCart()
@@ -597,7 +742,7 @@ CartMvcController.viewCart()
 Browser → GET /checkout
   │
   ▼
-Chain 2: /checkout/** requires ROLE_CUSTOMER → must be logged in as customer
+Chain 2: session restored → CSRF skipped (GET) → /checkout/** requires ROLE_CUSTOMER ✓
   │
   ▼
 CheckoutMvcController.showCheckout()           [controller/mvc/CheckoutMvcController.java]
@@ -613,6 +758,9 @@ CheckoutMvcController.showCheckout()           [controller/mvc/CheckoutMvcContro
 User selects "Cash" and submits →
 
 Browser → POST /checkout?paymentMethod=CASH
+  │
+  ▼
+Chain 2: session restored → CSRF checked ✓ → /checkout/** requires ROLE_CUSTOMER ✓
   │
   ▼
 CheckoutMvcController.placeOrder(paymentMethod="CASH", auth)
@@ -645,6 +793,9 @@ PayPal requires two separate HTTP round-trips to their API: one to create the or
 Browser → POST /checkout?paymentMethod=PAYPAL
   │
   ▼
+Chain 2: session restored → CSRF checked ✓ → /checkout/** requires ROLE_CUSTOMER ✓
+  │
+  ▼
 CheckoutMvcController.placeOrder(paymentMethod="PAYPAL", auth)
   └─ calculateTotal(buildCartProducts()) → e.g. 1399.98 EUR
   └─ PayPalService.createOrder(1399.98)  [service/PayPalService.java]
@@ -675,6 +826,9 @@ PayPal redirects browser back to:
 Browser → GET /checkout/paypal/return?token=XYZ
   │
   ▼
+Chain 2: session restored → CSRF skipped (GET) → /checkout/** requires ROLE_CUSTOMER ✓
+  │
+  ▼
 CheckoutMvcController.paypalReturn(token="XYZ", auth)
   └─ PayPalService.captureOrder("XYZ")
        └─ getAccessToken() → new PayPal bearer token (same as Step A above)
@@ -691,6 +845,9 @@ If the user cancels on PayPal:
 
 ```
 Browser → GET /checkout/paypal/cancel
+  │
+  ▼
+Chain 2: session restored → CSRF skipped (GET) → /checkout/** requires ROLE_CUSTOMER ✓
   └─ return "redirect:/checkout"  — user goes back to checkout page, cart unchanged
 ```
 
@@ -713,6 +870,9 @@ All admin endpoints require `ROLE_ADMIN`. If a non-admin accesses them, the `Aut
 Browser → GET /admin/categories
   │
   ▼
+Chain 2: session restored → CSRF skipped (GET) → /admin/** requires ROLE_ADMIN ✓
+  │
+  ▼
 AdminMvcController.categories()               [controller/mvc/AdminMvcController.java]
   └─ CategoryService.getAllCategories()
        └─ CategoryRepository.findAll() → List<Category>
@@ -721,6 +881,9 @@ AdminMvcController.categories()               [controller/mvc/AdminMvcController
 
 Browser → POST /admin/categories/save
   Body: name=Furniture&description=Home+furniture
+  │
+  ▼
+Chain 2: session restored → CSRF checked ✓ → /admin/** requires ROLE_ADMIN ✓
   │
   ▼
 AdminMvcController.saveCategory(@ModelAttribute CategoryForm form)
@@ -740,7 +903,7 @@ AdminMvcController.saveCategory(@ModelAttribute CategoryForm form)
 Browser → GET /admin/products/new
   │
   ▼
-Chain 2: requires ROLE_ADMIN ✓
+Chain 2: session restored → CSRF skipped (GET) → /admin/** requires ROLE_ADMIN ✓
   │
   ▼
 AdminMvcController.newProductForm()
@@ -758,6 +921,9 @@ AdminMvcController.newProductForm()
 ```
 Browser → POST /admin/products/save
   Body: name=Headphones&description=Wireless&price=99.99&stockQuantity=30&categoryId=1
+  │
+  ▼
+Chain 2: session restored → CSRF checked ✓ → /admin/** requires ROLE_ADMIN ✓
   │
   ▼
 AdminMvcController.saveProduct(@Valid @ModelAttribute ProductForm form, BindingResult result)
@@ -805,6 +971,9 @@ Browser → GET /admin/products  (after redirect)
 Browser → POST /admin/products/{id}/delete
   │
   ▼
+Chain 2: session restored → CSRF checked ✓ → /admin/** requires ROLE_ADMIN ✓
+  │
+  ▼
 AdminMvcController.deleteProduct(id)
   └─ ProductService.deleteById(id)
        └─ ProductRepository.deleteById(id)
@@ -826,6 +995,9 @@ AdminMvcController.deleteProduct(id)
 Browser → GET /admin/login-history
   │
   ▼
+Chain 2: session restored → CSRF skipped (GET) → /admin/** requires ROLE_ADMIN ✓
+  │
+  ▼
 AdminMvcController.loginHistory()
   └─ LoginHistoryRepository.findAll()
        └─ SELECT * FROM login_history ORDER BY login_at DESC
@@ -840,8 +1012,18 @@ AdminMvcController.loginHistory()
 Browser → GET /admin/orders?username=cust&from=2026-01-01&to=2026-12-31
   │
   ▼
+Chain 2: session restored → CSRF skipped (GET) → /admin/** requires ROLE_ADMIN ✓
+  │
+  ▼
 AdminMvcController.orders(username, from, to)
   └─ OrderService.searchOrders(username, from, to)
+       │
+       │  All three params are optional — Specification builds the WHERE clause
+       │  dynamically so only the filters the admin actually filled in are applied.
+       │  Without Specification you'd need a separate repository method for every
+       │  combination (username only, date only, both, neither — 8 combinations for
+       │  3 filters). Specification composes them with .and() at runtime instead.
+       │
        └─ builds JPA Specification dynamically:
             └─ if username not blank → OrderSpecification.hasUsername("cust")
                  → WHERE LOWER(user.username) LIKE '%cust%'
@@ -850,8 +1032,8 @@ AdminMvcController.orders(username, from, to)
             └─ if to date present → OrderSpecification.createdBefore(to)
                  → WHERE created_at <= 2026-12-31 23:59:59
        └─ OrderRepository.findAll(spec)
-            └─ Hibernate composes the WHERE clause from the specs
-            └─ returns only orders matching all filters
+            └─ Hibernate composes only the active filters into one WHERE clause
+            └─ returns only orders matching all provided filters
   └─ model.addAttribute("orders", list)
   └─ returns view "admin/orders"
 ```
@@ -900,6 +1082,26 @@ JavaScript receives JSON
   └─ user sees "Smartphone" appear instantly while still typing
 ```
 
+**Why is search under `/api/rest` and not MVC like the other product pages?**
+
+Because it needs to work without a page reload. JavaScript can only call endpoints that return JSON — not full HTML pages. If search were an MVC endpoint it would return a complete rendered page, meaning a full reload on every keystroke:
+
+```
+MVC approach (wrong for live search):
+  User types "s"   → browser reloads entire page → renders products.html
+  User types "sm"  → browser reloads entire page again
+  User types "sma" → browser reloads entire page again
+  ← slow, flickery, not live search
+
+REST/AJAX approach (what this project uses):
+  User types "s"   → fetch("/api/products/search?name=s")   → JSON → JS updates cards
+  User types "sm"  → fetch("/api/products/search?name=sm")  → JSON → JS updates cards
+  User types "sma" → fetch("/api/products/search?name=sma") → JSON → JS updates cards
+  ← instant, no reload, smooth
+```
+
+The other product pages (`/categories/{id}/products`, `/products/{id}`) are MVC because the user clicks a link and expects a full new page. Search is the only interaction that needs to be live, so it is the only one that needs to be a REST endpoint returning JSON. It also satisfies the exam requirement for an **asynchronous mechanism for publishing data on the web page**.
+
 **Files involved:**
 - `ProductRestController.java` — REST endpoints returning JSON
 - `ProductServiceImpl.java` — delegates to repository
@@ -917,6 +1119,9 @@ JavaScript receives JSON
 GET /api/products
   │
   ▼
+Chain 1: JwtRequestFilter (no token in header, skips) → CSRF disabled → /api/products/** is permitAll() ✓
+  │
+  ▼
 ProductRestController.getAll()
   └─ ProductService.getAllProducts()
        └─ ProductRepository.findAll() → List<Product>
@@ -924,6 +1129,9 @@ ProductRestController.getAll()
   └─ returns JSON array
 
 GET /api/products/3
+  │
+  ▼
+Chain 1: JwtRequestFilter (no token, skips) → CSRF disabled → /api/products/** is permitAll() ✓
   │
   ▼
 ProductRestController.getById(id=3)
@@ -985,7 +1193,7 @@ This runs **in the same request thread** as the login — it is synchronous, not
 | Authentication | Form login → JSESSIONID cookie | JSON login → JWT token |
 | State | Session stored on server | Stateless — token carries identity |
 | Filter chain | Chain 2 (Order 2) | Chain 1 (Order 1) |
-| Public endpoints | `/`, `/categories/**`, `/products/**`, `/cart/**`, `/login` | `/api/auth/**`, `/api/products/**` |
+| Public endpoints | `/`, `/categories/**`, `/products/**`, `/cart/**`, `/login` | `/api/auth/login`, `/api/auth/refreshToken`, `/api/products/**` |
 | Protected (customer) | `/checkout/**`, `/orders/**` | — |
 | Protected (admin) | `/admin/**` | — |
 | Async mechanism | JavaScript fetch() calls the REST API for live search | ProductRestController returns JSON |

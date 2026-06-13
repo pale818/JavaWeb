@@ -33,4 +33,7 @@ public class User {
         inverseJoinColumns = @JoinColumn(name = "role_id")
     )
     private Set<Role> roles;
+
+    @Column(length = 1024)
+    private String refreshToken;
 }

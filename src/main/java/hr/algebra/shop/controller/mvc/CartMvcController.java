@@ -66,12 +66,5 @@ public class CartMvcController {
         return REDIRECT_CART;
     }
 
-    // Inner DTO for view display
-    @lombok.AllArgsConstructor
-    @lombok.Getter
-    public static class CartItemDTO {
-        private Product product;
-        private Integer quantity;
-        private BigDecimal subtotal;
-    }
+    public record CartItemDTO(Product product, Integer quantity, BigDecimal subtotal) {}
 }
