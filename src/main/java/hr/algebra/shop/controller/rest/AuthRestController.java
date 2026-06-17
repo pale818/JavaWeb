@@ -37,6 +37,7 @@ public class AuthRestController {
         String accessToken = jwtUtil.generateToken(user.getUsername());
         String refreshToken = jwtUtil.generateRefreshToken(user.getUsername());
 
+        // Persisting refresh token on the User row allows revocation on logout
         user.setRefreshToken(refreshToken);
         userRepository.save(user);
 
@@ -48,6 +49,7 @@ public class AuthRestController {
 
     @PostMapping("/refreshToken")
     public ResponseEntity<JwtResponseDTO> refreshToken(@RequestBody RefreshTokenRequestDTO request) {
+        // Both conditions must pass: token exists in DB (not revoked) AND JWT signature/expiry is valid
         return userRepository.findByRefreshToken(request.getToken())
                 .filter(u -> jwtUtil.isTokenValid(request.getToken()))
                 .map(u -> ResponseEntity.ok(JwtResponseDTO.builder()
@@ -59,6 +61,7 @@ public class AuthRestController {
 
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(@RequestBody RefreshTokenRequestDTO request) {
+        // Nulling the token in DB revokes it, the JWT may still be valid but findByRefreshToken won't find it
         userRepository.findByRefreshToken(request.getToken()).ifPresent(u -> {
             u.setRefreshToken(null);
             userRepository.save(u);

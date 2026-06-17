@@ -2,6 +2,8 @@
 
 ---
 
+
+## PAYPAL ACC: sb-cwkzp51276956@personal.example.com , CK.c(y9E
 ## Postman REST API Routes
 
 Base URL: `https://web-production-8a929.up.railway.app`
@@ -171,8 +173,13 @@ This handles every request that does NOT match `/api/**` — all the Thymeleaf H
 **Trigger:** User fills in username + password in the browser and clicks Login.
 
 ```
+NOTE: the session and JSESSIONID=ABC123 cookie already exist before GET /login.
+They were created on GET / (the home page) because CartService is @SessionScope —
+Spring had to create a session to store the CartService instance in.
+The CSRF token was also already generated and stored in that session at that point.
+
 Browser
-  └─ GET /login
+  └─ GET /login  (Cookie: JSESSIONID=ABC123 already present)
        │
        ▼
 Chain 2: /login is permitAll() → no authentication required
@@ -180,16 +187,15 @@ Chain 2: /login is permitAll() → no authentication required
        ▼
 CsrfFilter
   └─ GET request → no CSRF check needed
-  └─ no session yet → creates one, generates random token "a3f9b2..."
-  └─ stores token in the new session: session.setAttribute("_csrf", "a3f9b2...")
+  └─ session already exists → reads existing CSRF token "a3f9b2..." from session
        │
        ▼
 PublicMvcController.login()                    [controller/mvc/PublicMvcController.java]
   └─ returns view name "login"
   └─ Thymeleaf renders login.html
-       └─ sees <form> → automatically injects hidden field:
+       └─ sees <form th:action> → automatically injects hidden field:
             <input type="hidden" name="_csrf" value="a3f9b2...">
-       └─ Tomcat sends Set-Cookie: JSESSIONID=ABC123 (the session that holds the token)
+            (not written in the .html file — Thymeleaf adds it at render time)
   └─ Browser displays username + password fields (with hidden _csrf inside the form)
 
 User fills in form and clicks submit →
@@ -247,9 +253,12 @@ DaoAuthenticationProvider  (continues)
        │
        ▼
 Spring Security success handler
+  └─ session fixation protection: old session ABC123 destroyed, new session BBB222 created
+       └─ JSESSIONID value changes here — this is the moment the user noticed the cookie change
+       └─ new CSRF token generated and stored in the new session
   └─ SecurityContextHolder.getContext().setAuthentication(auth)
-  └─ HttpSessionSecurityContextRepository saves SecurityContext into HttpSession
-  └─ Tomcat sends Set-Cookie: JSESSIONID=ABC123... to browser
+  └─ HttpSessionSecurityContextRepository saves SecurityContext into new HttpSession BBB222
+  └─ Tomcat sends Set-Cookie: JSESSIONID=BBB222 to browser  ← replaces the old cookie
   └─ Spring publishes AuthenticationSuccessEvent
        └─ AuthenticationSuccessListener.onApplicationEvent()
             └─ reads username="admin", IP from WebAuthenticationDetails
@@ -1179,6 +1188,124 @@ This runs **in the same request thread** as the login — it is synchronous, not
 - `AuthenticationSuccessListener.java` — listens for the event, saves the record
 - `LoginHistory.java` — JPA entity, maps to `login_history` table
 - `LoginHistoryRepository.java` — JPA interface, Spring generates the SQL
+
+---
+
+---
+
+# Chapter 5 — Railway Deployment
+
+## What is Railway?
+
+Railway is a cloud hosting platform. You push your code (or connect a GitHub repo) and Railway builds and runs the app for you. No server setup needed — it handles containers, networking, ports, and environment variables.
+
+## How the app gets built on Railway
+
+Railway detects it is a Maven project (because of `pom.xml`) and automatically runs:
+
+```
+./mvnw package -DskipTests
+```
+
+This produces `target/online-shop-0.0.1-SNAPSHOT.jar` — the fat JAR with embedded Tomcat inside.
+
+Railway then reads the `Procfile` to know how to start it:
+
+```
+web: java -jar target/online-shop-0.0.1-SNAPSHOT.jar
+```
+
+That single line tells Railway: run the JAR as a web process. Railway exposes it publicly at your Railway domain (`https://web-production-8a929.up.railway.app`).
+
+## Port
+
+Railway injects the port via an environment variable called `PORT`. The app reads it with:
+
+```properties
+server.port=${PORT:8080}
+```
+
+The `:8080` is the fallback — if `PORT` is not set (local dev), the app runs on 8080.
+
+## Environment variables
+
+Sensitive values that should not be hardcoded are set in Railway's dashboard under **Variables**. The app reads them via `${}` placeholders in `application.properties`:
+
+```properties
+paypal.return-url=${PAYPAL_RETURN_URL:http://localhost:8080/checkout/paypal/return}
+paypal.cancel-url=${PAYPAL_CANCEL_URL:http://localhost:8080/checkout}
+```
+
+On Railway, `PAYPAL_RETURN_URL` is set to `https://web-production-8a929.up.railway.app/checkout/paypal/return` so PayPal redirects back to the live URL instead of localhost.
+
+## Database
+
+The app uses an H2 file database stored at `./data/onlineshop.mv.db`. On Railway this file lives inside the container's filesystem. It persists between restarts as long as the container is not replaced — but Railway can replace containers on redeploy, so the data resets. For production you would use a persistent database (PostgreSQL), but H2 file is fine for a demo.
+
+`DataInitializer` runs on every startup and re-seeds roles, users, categories, and products if they don't already exist, so the app is always in a usable state after a fresh container.
+
+## Reverse proxy and HTTPS
+
+Railway sits behind a reverse proxy that terminates HTTPS. The proxy forwards requests to the app over plain HTTP internally. The app needs to know the original request was HTTPS so it generates correct URLs (e.g. for PayPal return URLs).
+
+This is handled in `application.properties` via:
+
+```properties
+server.forward-headers-strategy=framework
+```
+
+And in `SecurityConfiguration` with Tomcat's `RemoteIpValve`:
+
+```java
+TomcatServletWebServerFactory factory = new TomcatServletWebServerFactory();
+factory.addContextValves(new RemoteIpValve());
+```
+
+Together these make Spring trust the `X-Forwarded-Proto: https` header that Railway's proxy adds, so `request.getScheme()` returns `https` and all generated URLs are correct.
+
+## H2 console on Railway
+
+The H2 web console (`/h2-console`) is enabled and accessible on the live Railway URL. It requires:
+
+```properties
+spring.h2.console.enabled=true
+spring.h2.console.settings.web-allow-others=true   # allow access from non-localhost
+```
+
+And in `SecurityConfiguration` Chain 2:
+
+```java
+.headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
+```
+
+Because the H2 console uses `<iframe>` internally — `sameOrigin` allows frames from the same origin while blocking cross-origin framing attacks.
+
+## Deployment flow summary
+
+```
+Developer pushes code to GitHub
+  │
+  ▼
+Railway detects push → triggers new build
+  │
+  ▼
+Railway runs: ./mvnw package -DskipTests
+  └─ produces target/online-shop-0.0.1-SNAPSHOT.jar
+  │
+  ▼
+Railway reads Procfile → starts: java -jar target/online-shop-0.0.1-SNAPSHOT.jar
+  │
+  ▼
+Spring Boot starts
+  └─ DataInitializer.run() → seeds DB if empty
+  └─ App listens on $PORT
+  │
+  ▼
+Railway proxy receives HTTPS request from browser
+  └─ forwards to app over HTTP with X-Forwarded-Proto: https
+  └─ RemoteIpValve + forward-headers-strategy=framework → app sees correct scheme
+  └─ Response returned to browser
+```
 
 ---
 

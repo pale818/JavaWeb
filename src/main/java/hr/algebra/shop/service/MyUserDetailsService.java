@@ -26,7 +26,7 @@ public class MyUserDetailsService implements UserDetailsService {
                 user.getUsername(),
                 user.getPassword(),
                 user.getRoles().stream()
-                        .map(role -> new SimpleGrantedAuthority(role.getName()))
+                        .map(role -> new SimpleGrantedAuthority(role.getName())) // roles stored as ROLE_ADMIN — Spring Security expects that prefix
                         .collect(Collectors.toList())
         );
     }

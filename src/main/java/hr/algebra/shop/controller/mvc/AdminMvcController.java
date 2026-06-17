@@ -10,6 +10,7 @@ import hr.algebra.shop.service.OrderService;
 import hr.algebra.shop.service.ProductService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
@@ -35,7 +36,7 @@ public class AdminMvcController {
     private final OrderService orderService;
     private final LoginHistoryRepository loginHistoryRepository;
 
-    // ── Categories ──────────────────────────────────────────────────────────────
+    // ── Categories ───────────────────────────────────────────────────────────────
 
     @GetMapping("/categories")
     public String listCategories(Model model) {
@@ -60,18 +61,26 @@ public class AdminMvcController {
         return CATEGORIES_FORM_VIEW;
     }
 
+    // @ModelAttribute binds categ fields onto the categForm by field name automatically
+    // RedirectAttributes.addFlashAttribute() survives the redirect
     @PostMapping("/categories/save")
     public String saveCategory(@Valid @ModelAttribute("category") CategoryForm form,
                                BindingResult result, RedirectAttributes attrs) {
         if (result.hasErrors()) return CATEGORIES_FORM_VIEW;
-        Category category = Category.builder()
-                .id(form.getId())
-                .name(form.getName())
-                .description(form.getDescription())
-                .build();
-        categoryService.save(category);
-        attrs.addFlashAttribute(SUCCESS_ATTR, "Category saved successfully.");
-        return REDIRECT_CATEGORIES;
+        try {
+            Category category = Category.builder()
+                    .id(form.getId())
+                    .name(form.getName())
+                    .description(form.getDescription())
+                    .build();
+
+            categoryService.save(category);
+            attrs.addFlashAttribute(SUCCESS_ATTR, "Category saved successfully.");
+            return REDIRECT_CATEGORIES;
+        }catch (DataIntegrityViolationException e) {
+            result.rejectValue("name", "duplicate", "A category with this name already exists.");
+            return CATEGORIES_FORM_VIEW;
+        }
     }
 
     @PostMapping("/categories/{id}/delete")
@@ -147,7 +156,7 @@ public class AdminMvcController {
         return "admin/login-history";
     }
 
-    // ── All Orders ────────────────────────────────────────────────────────────────
+    // ── Orders ────────────────────────────────────────────────────────────────────
 
     @GetMapping("/orders")
     public String allOrders(@RequestParam(required = false) String username,

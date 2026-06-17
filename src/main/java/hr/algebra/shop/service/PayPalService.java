@@ -35,6 +35,7 @@ public class PayPalService {
 
     private final RestClient restClient = RestClient.create();
 
+    // PayPal bearer tokens are short-lived, fetched fresh before each API call
     private String getAccessToken() {
         String credentials = Base64.getEncoder()
                 .encodeToString((clientId + ":" + clientSecret).getBytes());
@@ -50,7 +51,7 @@ public class PayPalService {
         return response != null ? response.accessToken() : "";
     }
 
-    /** Creates a PayPal order and returns the URL the user must visit to approve it. */
+    // Step 1 of 2, reserves the amount and returns approval URL; money not moved yet
     public String createOrder(BigDecimal amount) {
         String token = getAccessToken();
         String value = amount.setScale(2, RoundingMode.HALF_UP).toPlainString();
@@ -85,6 +86,7 @@ public class PayPalService {
                 .orElseThrow(() -> new IllegalStateException("No PayPal approval URL in response"));
     }
 
+    // Step 2 of 2, actually moves the money after user approves on PayPal's site
     public void captureOrder(String paypalOrderId) {
         String token = getAccessToken();
 

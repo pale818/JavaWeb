@@ -26,6 +26,7 @@ public class User {
     @Column(nullable = false)
     private String password;
 
+    // EAGER — roles must be available immediately when Spring Security loads this user
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
         name = "users_roles",
@@ -34,6 +35,7 @@ public class User {
     )
     private Set<Role> roles;
 
+    // null means logged out — stored here so it can be revoked without a separate table
     @Column(length = 1024)
     private String refreshToken;
 }

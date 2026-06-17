@@ -27,7 +27,7 @@ public class Order {
     private LocalDateTime createdAt;
 
     @Column(nullable = false)
-    private String paymentMethod; // CASH or PAYPAL
+    private String paymentMethod;
 
     @Column(nullable = false)
     private BigDecimal totalAmount;

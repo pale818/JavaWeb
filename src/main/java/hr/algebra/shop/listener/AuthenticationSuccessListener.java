@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 
+// Fires on any successful login
 @Component
 @RequiredArgsConstructor
 public class AuthenticationSuccessListener implements ApplicationListener<AuthenticationSuccessEvent> {
@@ -20,6 +21,7 @@ public class AuthenticationSuccessListener implements ApplicationListener<Authen
     public void onApplicationEvent(AuthenticationSuccessEvent event) {
         String username = event.getAuthentication().getName();
         String ip = "unknown";
+        // WebAuthenticationDetails is only set for HTTP requests
         if (event.getAuthentication().getDetails() instanceof WebAuthenticationDetails details) {
             ip = details.getRemoteAddress();
         }

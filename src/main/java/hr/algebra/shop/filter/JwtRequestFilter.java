@@ -16,6 +16,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
+// OncePerRequestFilter guarantees exactly one execution per request even with async dispatch
 @Component
 @RequiredArgsConstructor
 public class JwtRequestFilter extends OncePerRequestFilter {
@@ -38,6 +39,7 @@ public class JwtRequestFilter extends OncePerRequestFilter {
                 SecurityContextHolder.getContext().setAuthentication(auth);
             }
         }
+        // If no valid token found, SecurityContext stays empty, AuthorizationFilter decides what to block
         filterChain.doFilter(request, response);
     }
 }

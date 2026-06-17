@@ -25,6 +25,8 @@ public class ProductRestController {
         return toDTO(productService.getProductById(id));
     }
 
+    // categoryId optional
+    // permitAll()
     @GetMapping("/search")
     public List<ProductDTO> search(@RequestParam String name,
                                    @RequestParam(required = false) Long categoryId) {

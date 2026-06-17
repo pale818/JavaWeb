@@ -8,12 +8,13 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
+// @SessionScope, one CartService instance per user session
 @Service
 @SessionScope
 @Getter
 public class CartService {
 
-
+    // productId → quantity, no DB writes until checkout
     private final Map<Long, Integer> items = new HashMap<>();
 
     public void addItem(Long productId, Integer quantity) {

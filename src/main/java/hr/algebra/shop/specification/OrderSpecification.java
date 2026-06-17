@@ -5,6 +5,7 @@ import org.springframework.data.jpa.domain.Specification;
 
 import java.time.LocalDate;
 
+// Builds WHERE clauses dynamically
 public class OrderSpecification {
 
     private OrderSpecification() {}

@@ -56,7 +56,6 @@ public class CheckoutMvcController {
         return ORDER_CONFIRMATION_VIEW;
     }
 
-    /** PayPal redirects here after the user approves payment. */
     @GetMapping("/paypal/return")
     public String paypalReturn(@RequestParam String token, Authentication auth, Model model) {
         payPalService.captureOrder(token);
@@ -65,7 +64,6 @@ public class CheckoutMvcController {
         return ORDER_CONFIRMATION_VIEW;
     }
 
-    /** PayPal redirects here if the user cancels. */
     @GetMapping("/paypal/cancel")
     public String paypalCancel() {
         return "redirect:/checkout";

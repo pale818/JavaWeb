@@ -17,6 +17,7 @@ public class OrderItem {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // Owning side of the relation — JPA uses this to write the order_id FK column
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "order_id", nullable = false)
     private Order order;
@@ -29,5 +30,5 @@ public class OrderItem {
     private Integer quantity;
 
     @Column(nullable = false)
-    private BigDecimal priceAtPurchase;
+    private BigDecimal priceAtPurchase; // snapshot of price at order time — product price may change later
 }

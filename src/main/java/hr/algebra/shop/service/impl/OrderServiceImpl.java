@@ -36,6 +36,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public List<Order> searchOrders(String username, String from, String to) {
+        // where(null) is a safe empty start — .and() only adds non-null specs, null ones are ignored
         Specification<Order> spec = Specification
                 .where(OrderSpecification.hasUsername(username))
                 .and(OrderSpecification.createdAfter(from))

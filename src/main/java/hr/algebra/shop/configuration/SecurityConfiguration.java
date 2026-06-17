@@ -46,15 +46,15 @@ public class SecurityConfiguration {
         }
     }
 
-    // ── REST / JWT chain (stateless) ─────────────────────────────────────────────
+    // Order(1),  checked first, only matches /api/** requests
     @Bean
     @Order(1)
     public SecurityFilterChain jwtFilterChain(HttpSecurity http) {
         try {
             http
                 .securityMatcher("/api/**")
-                .csrf(csrf -> csrf.disable())
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .csrf(csrf -> csrf.disable()) // stateless REST uses tokens, not cookies, CSRF not applicable
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)) // JWT carries identity, no server session needed
                 .authorizeHttpRequests(auth -> auth
                     .requestMatchers("/api/auth/**").permitAll()
                     .requestMatchers("/api/products/**").permitAll()
@@ -67,7 +67,7 @@ public class SecurityConfiguration {
         }
     }
 
-    // ── MVC / Form login chain ───────────────────────────────────────────────────
+    // Order(2), catches everything else, browser sessions and form login
     @Bean
     @Order(2)
     public SecurityFilterChain mvcFilterChain(HttpSecurity http) {
@@ -91,7 +91,7 @@ public class SecurityConfiguration {
                     .logoutSuccessUrl("/login?logout")
                     .permitAll()
                 )
-                .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()));
+                .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin())); // h2-console uses frames — sameOrigin allows it while blocking cross-origin framing
             return http.build();
         } catch (Exception e) {
             throw new IllegalStateException("Failed to configure MVC filter chain", e);

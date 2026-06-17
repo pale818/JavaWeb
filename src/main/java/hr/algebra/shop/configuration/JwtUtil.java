@@ -22,10 +22,12 @@ public class JwtUtil {
     @Value("${jwt.refresh-expiration}")
     private long refreshExpiration;
 
+    // Short-lived — sent in Authorization header on every API call
     public String generateToken(String username) {
         return buildToken(username, expiration);
     }
 
+    // Long-lived — stored in DB, used only to get a new access token when it expires
     public String generateRefreshToken(String username) {
         return buildToken(username, refreshExpiration);
     }
@@ -59,6 +61,7 @@ public class JwtUtil {
                 .getPayload();
     }
 
+    // Secret read from application.properties as a Base64-encoded string
     private SecretKey getSigningKey() {
         return Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
     }

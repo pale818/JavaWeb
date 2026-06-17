@@ -31,6 +31,7 @@ public class DataInitializer implements ApplicationRunner {
     @Value("${app.default-password}")
     private String defaultPassword;
 
+    // Called by Spring Boot once the full application context is ready, runs on every startup
     @Override
     public void run(ApplicationArguments args) {
         seedRolesAndUsers();

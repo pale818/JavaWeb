@@ -11,6 +11,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
+// Order(1) — runs before all other filters so every request and response status is logged
 @Slf4j
 @Component
 @Order(1)
